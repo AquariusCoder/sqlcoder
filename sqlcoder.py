@@ -22,20 +22,58 @@ import cx_Oracle
 
 os.environ['NLS_LANG'] = 'SIMPLIFIED CHINESE_CHINA.UTF8'
 
+# begin custom define ###########################
 g_map_type = {
    'VARCHAR2':'SqliteData::DataType::String',
    'NVARCHAR2':'SqliteData::DataType::String',
    'NUMBER':'SqliteData::DataType::Int',
    'DATE':'SqliteData::DataType::TimeStamp',
+   'BLOB':'SqliteData::DataType::ByteArray',
 }
+
+g_map_type_func = {
+   'VARCHAR2':'toString',
+   'NVARCHAR2':'toString',
+   'NUMBER':'toInt',
+   'DATE':'toString',
+   'BLOB':'toString',
+}
+
 g_map_nullable = {
     'Y':'true',
     'N':'false',
 }
+
 g_map_iskey = {
     True:'true',
     False:'false',
 }
+
+g_map_sqlfld_strufld = {
+    'zoe_std_dict':{
+        },
+    'zoe_std_dict_item':{},
+    'zoe_std_ds':{
+        'id':'strId',
+        'name':'strName',
+        'std_code':'strStdCode',
+        'std_name':'strStdName',
+        'type':'systemType',
+        'parent_id':'strParentId',
+        'operator':'strOperator',
+        'timestamp':'dtTimeStamp',
+        'notes':'strNote',
+        'sort_code':'nSortCode',
+        'status':'nStatus',
+        },
+    'zoe_std_data_element':{},
+    'zoe_std_segment_catalog':{},
+    'zoe_std_segment':{},
+    'zoe_std_de_segment_distribute':{},
+    'zoe_std_de_dictitem_distribute':{},
+}
+
+# end custom define ###########################
 
 class Field(object):
     def __init__(self, name, type, len, nullable, comments='', iskey=False):
@@ -47,7 +85,8 @@ class Field(object):
         self.iskey = iskey
     
 class Table(object):
-    def __init__(self, fields):
+    def __init__(self, name, fields):
+        self.name = name
         self.fields = fields
     
 class Connect(object):
@@ -78,21 +117,39 @@ class Connect(object):
         cursor.close()
         cnn.close()
         
-        return Table(fields)
+        return Table(table_name, fields)
         
 class Coder(object):
-    def genarate(self, table, builder, out_path):
-        str = ''
+    '''
+    根据需求编写 generate 函数
+    '''
+    def generate_add_field(self, table, builder, out_path):
+        str =''
         for fld in table.fields:
-            row = 'm_builderStdDs.addField(SqliteField(L"%s", %s, %s, %s, %s));' % \
-                (fld.name, \
+            row = '%s.addField(SqliteField(L"%s", %s, %s, %s, %s));\t// %s\n' % (\
+                builder, \
+                fld.name.lower(), \
                 g_map_type[fld.type], \
                 g_map_nullable[fld.nullable], \
                 fld.len, \
-                g_map_iskey[fld.iskey])
-            row = row.ljust(100) + '// %s\n' % fld.comments
+                g_map_iskey[fld.iskey], \
+                fld.comments)
             str += row
+        self.__out(str, out_path)
         
+    def generate_exec_item(self, table, out_path):
+        str =''
+        map_name_struct = g_map_sqlfld_strufld[table.name.lower()]
+        for fld in table.fields:
+            row = 'item.%s = record.field(L"%s").value().%s();\n' % (\
+                map_name_struct[fld.name.lower()], \
+                fld.name.lower(), \
+                g_map_type_func[fld.type])
+
+            str += row
+        self.__out(str, out_path)
+
+    def __out(self, str, out_path):
         file = open(out_path, 'w')
         file.write(str)
         file.close()
@@ -117,14 +174,19 @@ if __name__ == '__main__':
             
         return ret
     
-    cnn_str = inputparam(1, 'input the connect string(zemr/zemr@192.168.7.20/zemr): ', 'zemr/zemr@192.168.7.20/zemr', None, False)
+    generate_opt = ('ge_add_field', 'ge_exec_item')
+    cnn_str = inputparam(1, 'input the connect string(zemr/zemr@ZEMR_720): ', 'zemr/zemr@ZEMR_720', None, False)
     table_name = inputparam(2, 'input the table name: ', '', None, False)
-    builder = inputparam(3, 'input the sql builder(m_builder): ', 'm_builder', None, False)
+    op = inputparam(3, 'select operate(ge_add_field/ge_exec_item default:ge_add_field): ', 'ge_add_field', generate_opt, False)
     out_path = inputparam(4, 'input the out file path(coder_out.txt): ', 'coder_out.txt', None, False)
     
     cnn = Connect(cnn_str)
     table = cnn.get_table(table_name)
     
     coder = Coder()
-    coder.genarate(table, builder, out_path)
+    if op == 'ge_add_field':
+        builder = inputparam(5, 'input the sqlbuilder(m_builder):', 'm_builder', None, False)
+        coder.generate_add_field(table, builder, out_path)
+    elif op == 'ge_exec_item':
+        coder.generate_exec_item(table, out_path)
     
