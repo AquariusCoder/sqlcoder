@@ -70,7 +70,24 @@ g_map_sqlfld_strufld = {
     'zoe_std_segment_catalog':{},
     'zoe_std_segment':{},
     'zoe_std_de_segment_distribute':{},
-    'zoe_std_de_dictitem_distribute':{},
+    'zoe_std_de_dictitem_distribute':{
+        'de_id':'strDataElementId',
+        'disease_id':'strDiseaseId',
+        'dict_id':'lngDictId',
+        'dict_item_id':'strDictItemId',
+        'segment_id':'strSegmentId',
+        'dict_item_alias':'strDictItemAlias',
+        'group_no':'lngGroupNo',
+        'sort_code':'lngSortCode',
+        'prefix':'strPrefix',
+        'suffix':'strSuffix',
+        'item_name':'strItemName',
+        'item_name_position':'strItemNamePosition',
+        'template_id':'strTemplateId',
+        'template_name':'strTemplateName',
+        'timestamp':'strTimeStamp',
+        'status':'lngStatus',
+        },
 }
 
 # end custom define ###########################
@@ -149,6 +166,49 @@ class Coder(object):
             str += row
         self.__out(str, out_path)
 
+    def generate_xml_att(self, table, out_path):
+        strTemp = '<'
+        for fld in table.fields:
+            strTemp += '%s = L"" ' % fld.name.lower()
+        
+        strTemp = strTemp + '></%s>' % table.fields[0].name.lower()
+        self.__out(strTemp, out_path)
+        
+    def generate_xml_tag(self, table, out_path):
+        strTemp = '<root>\n'
+        for fld in table.fields:
+            strTemp += '    <%s><%s>    %s\n' % (fld.name.lower(), fld.name.lower(), fld.comments)
+
+        strTemp = strTemp + '</root>'
+        self.__out(strTemp, out_path)
+
+    def generate_get_xml_data(self, table, out_path):
+        strTemp = ''
+        for fld in table.fields:
+            strTemp += 'wstring %s = root[L"%s"].GetData();\n' % (fld.name.lower(), fld.name.lower())
+
+        self.__out(strTemp, out_path)
+
+    def generate_sql_clause(self, table, out_path):
+        strTemp = ''
+        for fld in table.fields:
+            strTemp += 'if(!%s.empty())\n\tosCondition << L" AND T.%s = \'" << %s << L"\' ";\n' % (fld.name.lower(), fld.name.lower(), fld.name.lower())
+
+        self.__out(strTemp, out_path)
+    def generate_sql_sel_fields(self, table, out_path):
+        strTemp = ''
+        for fld in table.fields:
+            strTemp += 'T.%s, ' % fld.name.lower()
+
+        self.__out(strTemp, out_path)
+
+    def generate_sel_tag(self, table, out_path):
+        strTemp = ''
+        for fld in table.fields:
+            strTemp += 'vecTag.push_back(L"%s");\n' % fld.name.lower()
+
+        self.__out(strTemp, out_path)
+        
     def __out(self, str, out_path):
         file = open(out_path, 'w')
         file.write(str)
@@ -165,21 +225,35 @@ if __name__ == '__main__':
             ret = default
         
         if ret == '' and not nullable:
-            print 'not allow null\m'
+            print 'not allow null\n'
             ret = inputparam(index, prompt, default, options, nullable)
             
-        if options is not None and ret not in options:
+        if options is not None and ret not in options.keys():
             print 'select one of the options please!\n'
             ret = inputparam(index, prompt, default, options, nullable)
             
         return ret
     
-    generate_opt = ('ge_add_field', 'ge_exec_item')
+    generate_opt = {
+        '1':'ge_add_field', 
+        '2':'ge_exec_item', 
+        '3':'ge_xml_att', 
+        '4':'ge_xml_tag',
+        '5':'ge_get_xml_data',
+        '6':'ge_sql_clause',
+        '7':'ge_sql_sel_fields',
+        '8':'ge_sel_tag'
+        }
+    strSelTip = 'select operate(defaulat: 1):\n'
+    for k, v in generate_opt.items():
+        strSelTip += '%s.%s\n' % (k, v)
+
     cnn_str = inputparam(1, 'input the connect string(zemr/zemr@ZEMR_720): ', 'zemr/zemr@ZEMR_720', None, False)
     table_name = inputparam(2, 'input the table name: ', '', None, False)
-    op = inputparam(3, 'select operate(ge_add_field/ge_exec_item default:ge_add_field): ', 'ge_add_field', generate_opt, False)
+    op_index = inputparam(3, strSelTip, '1', generate_opt, False)
     out_path = inputparam(4, 'input the out file path(coder_out.txt): ', 'coder_out.txt', None, False)
     
+    op = generate_opt[op_index]
     cnn = Connect(cnn_str)
     table = cnn.get_table(table_name)
     
@@ -189,4 +263,16 @@ if __name__ == '__main__':
         coder.generate_add_field(table, builder, out_path)
     elif op == 'ge_exec_item':
         coder.generate_exec_item(table, out_path)
+    elif op == 'ge_xml_att':
+        coder.generate_xml_att(table, out_path)
+    elif op == 'ge_xml_tag':
+        coder.generate_xml_tag(table, out_path)
+    elif op == 'ge_get_xml_data':
+        coder.generate_get_xml_data(table, out_path)
+    elif op == 'ge_sql_clause':
+        coder.generate_sql_clause(table, out_path)
+    elif op == 'ge_sql_sel_fields':
+        coder.generate_sql_sel_fields(table, out_path)
+    elif op == 'ge_sel_tag':
+        coder.generate_sel_tag(table, out_path)
     
